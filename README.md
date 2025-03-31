@@ -2,7 +2,7 @@
 
 
 **Authors:** Datao Liang & Rohan Bhattaram
-**Promoter:** Bace Mihai  
+**Promoter:** Mihai Bace  
 **Supervisor:** Alexandre Personnic  
 
 ## 📌 **Overview**  
