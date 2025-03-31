@@ -244,9 +244,9 @@ class WholeModel(nn.Module): ## Sequence Length=batchsize !!
 
 ###########################################################
 
-model = WholeModel()
+# model = WholeModel()
 
-output = model("C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r/left_eye/left_eye_0000.jpg", "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r/right_eye/right_eye_0000.jpg", "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r/face/face_0000.jpg")
+# output = model("C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r/left_eye/left_eye_0000.jpg", "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r/right_eye/right_eye_0000.jpg", "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r/face/face_0000.jpg")
 
 #########################################################
 
