@@ -1,7 +1,7 @@
 import os
 import cv2
+import shutil  
 
-# List of exact video filenames to process
 target_videos = [
     "webcam_c_eyes.mp4",
     "webcam_c_face.mp4",
@@ -73,18 +73,25 @@ def process_all_subfolders(base_dir, output_base):
         for video_name in target_videos:
             video_path = os.path.join(subfolder_path, video_name)
             if os.path.isfile(video_path):
-                cam_position = video_name.split('_')[1]  # 'r', 'l', or 'c'
+                cam_position = video_name.split('_')[1]  
                 is_face = "face" in video_name
                 output_path = os.path.join(output_base, subfolder)
                 extract_and_split_frames(video_path, output_path, cam_position, is_face)
 
+        for cam_position in ['r', 'l', 'c']:
+            h5_name = f"webcam_{cam_position}.h5"
+            h5_src_path = os.path.join(subfolder_path, h5_name)
+            h5_dst_folder = os.path.join(output_base, subfolder, cam_position)
+            os.makedirs(h5_dst_folder, exist_ok=True)
 
+            if os.path.isfile(h5_src_path):
+                shutil.copy(h5_src_path, os.path.join(h5_dst_folder, h5_name))
+                print(f"Copied {h5_name} → {h5_dst_folder}")
+            else:
+                print(f"Warning: {h5_name} not found in {subfolder_path}")
 
-
-
-# Base directory where the folders are located
 base_directory = r"C:\Users\rohan\Desktop\Master\Master Thesis\Master-Thesis\EVE\eve_mini\train01"
-# Base output directory for processed frames
+
 output_directory = r"C:\Users\rohan\Desktop\Master\Master Thesis\Master-Thesis\OP"
 
 process_all_subfolders(base_directory, output_directory)
