@@ -10,6 +10,7 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import matplotlib.pyplot as plt
+import h5py
 # https://flypix.ai/blog/image-recognition-algorithms/ why I choosed only first few layers for feature extraction, upto middle layers are sufficient to provide information about eyes
 # In higher layers of the network, detailed pixel information is lost whilethe high level content of the image is preserved. Clear Explanation is here(https://ai.stackexchange.com/questions/30038/why-do-we-lose-detail-of-an-image-as-we-go-deeper-into-a-convnet)
 class ResNetFeatureExtractor(nn.Module):
@@ -28,7 +29,7 @@ class ResNetFeatureExtractor(nn.Module):
     def forward(self, x):
         x = self.feature_extractor(x)  
         x = self.reduce_channels(x)   
-        print("ResNetFeatureExtractor", x.shape)
+        #print("ResNetFeatureExtractor", x.shape)
         return x  # (bs, ch, h, w)
 
 
@@ -51,7 +52,7 @@ class FeatureFusion(torch.nn.Module):
         # total_ch = Leye[1]+Reye[1]+FaceData[1]  # total channels of the input // this is not working 
         concate = torch.cat((left_eye, right_eye, face), 1)  # dim = 0 or 1?  only channel dim changes?
         out = self.gn(concate)
-        print("FeatureFusion", out.shape)
+        #print("FeatureFusion", out.shape)
         return out 
 
 # from vit_pytorch import ViT
@@ -88,7 +89,7 @@ class Attention(torch.nn.Module):
         #reshape the output
         # for input frames, the temporal information should be considered, how to define the input_size and hidden_size?
 
-        print("Attention", x_att.shape)
+        #print("Attention", x_att.shape)
         return x_att
         
 
@@ -132,7 +133,7 @@ class Temporal(torch.nn.Module):
         
 
     def forward(self, x_att, h_state=None):
-        print("Temporal_start", x_att.shape, h_state)
+        #print("Temporal_start", x_att.shape, h_state)
         # h_n itself should be an input for GRU, otherwise useless, dont forget the hidden state
         out, h_n = self.gru(x_att, h_state) # read the source, there are 2 outputs, but what is h_n here? should be the hidden state of the last layer?
         # mind the coherence of the input and output of the RNN layer 
@@ -140,8 +141,8 @@ class Temporal(torch.nn.Module):
         #reshape the output
         # for input frames, the temporal information should be considered, how to define the input_size and hidden_size?
 
-        print("Temporal out", out.shape)
-        print("Temporal h_n", h_n.shape)
+        #print("Temporal out", out.shape)
+        #print("Temporal h_n", h_n.shape)
         return out, h_n   # okay one important thing is to use h_n or out for fc layer?
         # answer: use out, since it contains the info of all "time steps" (or frame steps). However, h_n only contains the info of the last time step. 
         
@@ -185,11 +186,11 @@ class GazePrediction(nn.Module):
         self.fc = nn.Linear(input_dim, num_classes)
     
     def forward(self, x):
-        print("enter FC layer")
+        #print("enter FC layer")
         # Ensure x is flat going into the FC layer (it should already be flat if coming from GAP)
         x = x.view(x.size(0), -1)  # Flatten to [bs, features]
         x = self.fc(x)
-        print("GazePrediction", x.shape)
+        #print("GazePrediction", x.shape)
         return x
 
 class WholeModel(nn.Module): ## Sequence Length=batchsize !!
@@ -200,7 +201,7 @@ class WholeModel(nn.Module): ## Sequence Length=batchsize !!
                 FeatureFusion(),
                 Attention(),
                 Temporal(),
-                GazePrediction(input_dim=512, num_classes=3)  # why sequence_length = 64? h*w*bs, yes indeed :)
+                GazePrediction(input_dim=512, num_classes=2)  # why sequence_length = 64? h*w*bs, yes indeed :)
                 # RuntimeError: mat1 and mat2 shapes cannot be multiplied (4x8192 and 32768x3) from 8192/512=16 I know seq_len = 16, but why?
                 # answer: read the source code of GRU, the output of GRU is (seq_len, bs, hidden_size), so the input of FC layer should be (bs, seq_len*hidden_size)
             ]))
@@ -234,11 +235,9 @@ class WholeModel(nn.Module): ## Sequence Length=batchsize !!
         # gru_out = gru_out.reshape(gru_out.shape[0], -1)   
         #print("gru_out", gru_out.shape)
         gap = torch.mean(gru_out, dim=0)
-        print("asdfasdfasdfasdf")
-        print(gap.shape)
-        print("asdfasdfasdfasdf")
+        #print(gap.shape)
         pred = self.layers[4](gap)  # FC layer handles the rest
-        print("WholeModel", pred.shape)
+        #print("WholeModel", pred.shape)
         return pred
     
     
@@ -252,55 +251,60 @@ class WholeModel(nn.Module): ## Sequence Length=batchsize !!
 #########################################################
 
 
-class GazeDatasetFromPaths(Dataset):
-     def __init__(self, folder_path, label_path):
-         self.folder_path = folder_path
-         self.labels = pd.read_csv(label_path, header=None).values.astype('float32') # converted to numpy array
-         self.left_eye_files = sorted(os.listdir(os.path.join(folder_path, "left_eye")))
-         self.right_eye_files = sorted(os.listdir(os.path.join(folder_path, "right_eye")))
-         self.face_files = sorted(os.listdir(os.path.join(folder_path, "face")))
+class GazeDatasetFromH5(Dataset):
+    def __init__(self, h5_file_path, image_folder):
+        self.h5_file = h5py.File(h5_file_path, 'r')
+        self.labels = self.h5_file['right_g_tobii/data'][:]
+        self.image_folder = image_folder
+        self.left_eye_files = sorted(os.listdir(os.path.join(image_folder, "left_eye")))
+        self.right_eye_files = sorted(os.listdir(os.path.join(image_folder, "right_eye")))
+        self.face_files = sorted(os.listdir(os.path.join(image_folder, "face")))
 
-     def __len__(self):
-         return len(self.labels)
+    def __len__(self):
+        return len(self.labels)
 
-     def __getitem__(self, idx):
-         left_path = os.path.join(self.folder_path, "left_eye", self.left_eye_files[idx])
-         right_path = os.path.join(self.folder_path, "right_eye", self.right_eye_files[idx])
-         face_path = os.path.join(self.folder_path, "face", self.face_files[idx])
-         label = torch.tensor(self.labels[idx], dtype=torch.float32)
-         print("--------------------------qwe-----------")
-         print(label.shape)
-         print("--------------------------qwe-----------")
-         return left_path, right_path, face_path, label
+    def __getitem__(self, idx):
+        left_path = os.path.join(self.image_folder, "left_eye", self.left_eye_files[idx])
+        right_path = os.path.join(self.image_folder, "right_eye", self.right_eye_files[idx])
+        face_path = os.path.join(self.image_folder, "face", self.face_files[idx])
+        label = torch.tensor(self.labels[idx], dtype=torch.float32)
+        return left_path, right_path, face_path, label
 
-def dot_product_loss(pred, target):
+def spherical_to_cartesian(theta_phi):
+    theta = theta_phi[:, 0]
+    phi = theta_phi[:, 1]    
+    x = torch.sin(theta) * torch.cos(phi)
+    y = torch.sin(theta) * torch.sin(phi)
+    z = torch.cos(theta)
+    return torch.stack([x, y, z], dim=1)
 
-    pred = nn.functional.normalize(pred, p=2, dim=1) # Resulting vector will have the correct direction but unit vector
-    target = nn.functional.normalize(target, p=2, dim=1)
-    return torch.sum(pred * target, dim=1).mean()
+# def dot_product_loss(pred, target):
+#     pred = nn.functional.normalize(pred, p=2, dim=1)
+#     target = spherical_to_cartesian(target)
+#     target = nn.functional.normalize(target, p=2, dim=1)
+#     return torch.sum(pred * target, dim=1).mean()
 
-def angular_error(pred, target): # clamping is still needed
-    pred = nn.functional.normalize(pred, p=2, dim=1)
-    target = nn.functional.normalize(target, p=2, dim=1)
-    cos_sim = torch.sum(pred * target, dim=1)
-    print(pred)
-    print(target)
-    print(torch.acos(cos_sim) * (180.0 / torch.pi))
-    return torch.acos(cos_sim) * (180.0 / torch.pi)
+def angular_error(pred_theta_phi, target_theta_phi):
+    print(pred_theta_phi)
+    print(target_theta_phi)
+    pred_vec = spherical_to_cartesian(pred_theta_phi)
+    target_vec = spherical_to_cartesian(target_theta_phi)
+    pred_vec = nn.functional.normalize(pred_vec, p=2, dim=1)
+    target_vec = nn.functional.normalize(target_vec, p=2, dim=1)
+    cos_sim = torch.sum(pred_vec * target_vec, dim=1)
+    cos_sim = torch.clamp(cos_sim, -1.0, 1.0)  
+    return torch.acos(cos_sim) * (180.0 / torch.pi)  
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = WholeModel().to(device)
 
-dataset_path = "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r"
-label_excel = "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/data.csv"
+image_folder = "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r"
+h5_label_path = "C:/Users/rohan/Desktop/Master/Master Thesis/Master-Thesis/Dataset-Test/Output Folder/webcam_r.h5"
 
-dataset = GazeDatasetFromPaths(dataset_path, label_excel)
-dataloader = DataLoader(dataset, batch_size=1, shuffle=True) 
+model = WholeModel().to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+dataset = GazeDatasetFromH5(h5_label_path, image_folder)
+dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
 
 optimizer = optim.Adam(model.parameters(), lr=0.001)
-
 epochs = 5
-
 loss_history = []
 angular_error_history = []
 
@@ -310,35 +314,34 @@ for epoch in range(epochs):
     total_ang_error = 0.0
 
     for left_paths, right_paths, face_paths, labels in dataloader:
+        device = next(model.parameters()).device
         labels = labels.to(device)
-        predictions = []
 
+        predictions = []
         for i in range(len(left_paths)):
             pred = model(left_paths[i], right_paths[i], face_paths[i]).squeeze(0)
             predictions.append(pred)
 
         predictions = torch.stack(predictions)
+        #loss = dot_product_loss(predictions, labels)
         loss = angular_error(predictions, labels)
-        ang_err = angular_error(predictions, labels).mean()
-        
+        #ang_err = angular_error(predictions, labels).mean()
 
         optimizer.zero_grad()
         loss.mean().backward()
         optimizer.step()
 
         total_loss += loss.item()
-        total_ang_error += ang_err.item()
+        #total_ang_error += ang_err.item()
 
     avg_loss = total_loss / len(dataloader)
     avg_ang_err = total_ang_error / len(dataloader)
 
     loss_history.append(avg_loss)
     angular_error_history.append(avg_ang_err)
-
     print(f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | Mean Angular Error: {avg_ang_err:.2f}°")
 
 plt.figure(figsize=(10, 4))
-
 plt.subplot(1, 2, 1)
 plt.plot(loss_history, marker='o', label='Training Loss')
 plt.xlabel("Epoch")
@@ -358,5 +361,3 @@ plt.legend()
 plt.tight_layout()
 plt.savefig("training_curve.png")
 plt.show()
-
-
